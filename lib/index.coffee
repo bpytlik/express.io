@@ -45,17 +45,29 @@ express.application.io = (options) ->
     @io.router = new Object
     @io.middleware = []
     @io.route = (route, next, options) ->
+        reroute = options?.reroute
+        added_routes = []
         if options?.trigger is true
             if route.indexOf ':' is -1
                 @router[route] next
+                if reroute
+                    added_routes.push(route)
             else
                 split = route.split ':'
                 @router[split[0]][split[1]] next
+                if reroute
+                    added_routes.push(split)
         if _.isFunction next
             @router[route] = next
+            if reroute
+                added_routes.push(route)
         else
             for key, value of next
                 @router["#{route}:#{key}"] = value
+                if reroute
+                    added_routes.push("#{route}:#{key}")
+        if reroute
+            @rerouteSockets(added_routes)
     @io.configure => @io.set 'authorization', (data, next) =>
         unless sessionConfig.store?
             return async.forEachSeries @io.middleware, (callback, next) ->
@@ -91,7 +103,7 @@ express.application.io = (options) ->
         @io.middleware.push callback
 
     @io.sockets.on 'connection', (socket) =>
-        initRoutes socket, @io
+        @io.initRoutes socket
 
     @io.broadcast = =>
         args = Array.prototype.slice.call arguments, 0
@@ -125,20 +137,8 @@ express.application.io = (options) ->
     
     @_router.stack.push layer
 
-    return this
-
-listen = express.application.listen
-express.application.listen = ->
-    args = Array.prototype.slice.call arguments, 0
-    if @server?
-        @server.listen.apply @server, args
-    else
-        listen.apply this, args
-        
-
-initRoutes = (socket, io) ->
-    setRoute = (key, callback) ->
-        socket.on key, (data, respond) ->
+    @io.routeSocket = (socket, route, callback) =>
+        socket.on route, (data, respond) =>
             if typeof data is 'function'
                 respond = data
                 data = undefined
@@ -154,12 +154,34 @@ initRoutes = (socket, io) ->
             session = socket.handshake.session
             request.session = new expressSession.Session request, session if session?
             socket.handshake.session = request.session
-            request.io = new RequestIO(socket, request, io)
+            request.io = new RequestIO(socket, request, @io)
             request.io.respond = respond
             request.io.respond ?= ->
             callback request
-    for key, value of io.router
-        setRoute(key, value)
 
+    @io.initRoutes = (socket) ->
+        for key, value of @router
+            @routeSocket(socket, key, value)
+
+    @io.rerouteSockets = (routes) ->
+        for name, socket of @sockets.sockets
+            for r in routes
+                if typeof(r) == "string"
+                    v = @router[r]
+                else
+                    v = @router[r[0]][r[1]]
+                do (v) =>
+                    socket.removeAllListeners(r)
+                    @routeSocket(socket, r, v)
+
+    return this
+
+listen = express.application.listen
+express.application.listen = ->
+    args = Array.prototype.slice.call arguments, 0
+    if @server?
+        @server.listen.apply @server, args
+    else
+        listen.apply this, args
 
 module.exports = express

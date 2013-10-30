@@ -106,6 +106,24 @@ describe 'a basic express.io app', ->
         otherClient.on 'test-room', ->
             throw new Error 'should not receive this'
 
+    it 'should not reroute unless asked', (done) ->
+        client.emit("test-respond", (message) ->
+            route_cb = (request) ->
+                done("Should not get here")
+            app.io.route('test-unfound-route', route_cb)
+            client.emit('test-unfound-route', () ->
+                done("Should not get here"))
+            setTimeout(done, 250)
+        )
+
+    it 'should reroute when asked', (done) ->
+        client.emit("test-respond", (message) ->
+            route_cb = (request) ->
+                request.io.respond()
+            app.io.route('test-unfound-route', route_cb, {reroute: true})
+            client.emit('test-unfound-route', done)
+        )
+
     afterEach (done) ->
         client.disconnect()
         otherClient.disconnect()

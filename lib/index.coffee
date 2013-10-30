@@ -88,7 +88,7 @@ express.application.io = (options) ->
         @io.middleware.push callback
 
     @io.sockets.on 'connection', (socket) =>
-        initRoutes socket, @io
+        @io.initRoutes socket
 
     @io.broadcast = =>
         args = Array.prototype.slice.call arguments, 0
@@ -117,20 +117,8 @@ express.application.io = (options) ->
                 broadcast: @io.broadcast
             next()
 
-    return this
-
-listen = express.application.listen
-express.application.listen = ->
-    args = Array.prototype.slice.call arguments, 0
-    if @server?
-        @server.listen.apply @server, args
-    else
-        listen.apply this, args
-        
-
-initRoutes = (socket, io) ->
-    setRoute = (key, callback) ->
-        socket.on key, (data, respond) ->
+    @io.routeSocket = (socket, route, callback) =>
+        socket.on route, (data, respond) =>
             if typeof data is 'function'
                 respond = data
                 data = undefined
@@ -146,12 +134,23 @@ initRoutes = (socket, io) ->
             session = socket.handshake.session
             request.session = new connect.session.Session request, session if session?
             socket.handshake.session = request.session
-            request.io = new RequestIO(socket, request, io)
+            request.io = new RequestIO(socket, request, @io)
             request.io.respond = respond
             request.io.respond ?= ->
             callback request
-    for key, value of io.router
-        setRoute(key, value)
 
+    @io.initRoutes = (socket) =>
+        for key, value of @io.router
+            @io.routeSocket(socket, key, value)
+
+    return this
+
+listen = express.application.listen
+express.application.listen = ->
+    args = Array.prototype.slice.call arguments, 0
+    if @server?
+        @server.listen.apply @server, args
+    else
+        listen.apply this, args
 
 module.exports = express

@@ -73,14 +73,14 @@ express.application.io = (options) ->
                     data.cookies = request.cookies
                     rawCookie = data.cookies[sessionConfig.key]
                     return next "No cookie present", false unless rawCookie?
-                    sessionId = cookieParserUtils.signedCookies rawCookie, sessionConfig.secret
+                    sessionId = cookieParserUtils.signedCookie rawCookie, sessionConfig.secret
                     data.sessionID = sessionId
                     sessionConfig.store.get sessionId, (error, session) ->
                         return next error if error?
                         data.session = new expressSession.Session data, session
                         next null, true
                     
-            sessionId = cookieParserUtils.signedCookies rawCookie, sessionConfig.secret
+            sessionId = cookieParserUtils.signedCookie rawCookie, sessionConfig.secret
             data.sessionID = sessionId
             sessionConfig.store.get sessionId, (error, session) ->
                 return next error if error?
